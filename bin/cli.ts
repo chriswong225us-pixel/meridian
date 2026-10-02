@@ -50,7 +50,11 @@ Options:
 Environment variables:
   MERIDIAN_PORT                     Port to listen on (default: 3456)
   MERIDIAN_HOST                     Host to bind to (default: 127.0.0.1)
-  MERIDIAN_BACKEND                  claude (default), antigravity, or combined
+  MERIDIAN_BACKEND                  claude (default), antigravity, combined, or codex
+  MERIDIAN_CODEX                    Serve ChatGPT (Codex) beside Claude at /codex and for gpt-* models (1)
+  MERIDIAN_CODEX_PATH               Official codex executable (default: codex)
+  MERIDIAN_CODEX_MODEL              ChatGPT model used when a client sends a Claude model name
+  MERIDIAN_CODEX_TOOL_TIMEOUT_MS    Client-tool wait before a Codex turn is abandoned (default: 900000)
   MERIDIAN_AGY_STATE_PATH           Optional bounded persistent state file
   MERIDIAN_AGY_TURN_TIMEOUT_MS      Active CLI turn deadline (default: 300000)
   MERIDIAN_AGY_TOOL_TIMEOUT_MS      Idle client-tool wait (default: 60000)
@@ -322,7 +326,7 @@ export async function runCli(
   const { installErrorReporter } = await import("../src/errorReporting")
   installErrorReporter({ version })
 
-  if (process.env.MERIDIAN_BACKEND !== "antigravity") {
+  if (process.env.MERIDIAN_BACKEND !== "antigravity" && process.env.MERIDIAN_BACKEND !== "codex") {
     // Plugin check — warn if OpenCode config exists but meridian plugin is missing
     try {
       const { findOpencodeConfigPath, checkPluginConfigured, findPluginPath } = await import("../src/proxy/setup")

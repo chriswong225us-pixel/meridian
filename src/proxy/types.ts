@@ -1,4 +1,5 @@
 import type { AntigravityPlugin } from "./backends/antigravityPlugins"
+import type { CodexOptions } from "./backends/codexRuntime"
 import type { Server } from "node:http"
 import type { ProfileConfig } from "./profiles"
 
@@ -27,10 +28,20 @@ export interface AntigravityOptions {
   pendingToolTimeoutMs?: number
 }
 
+export interface CodexBackendOptions extends CodexOptions {
+  /** Serve ChatGPT (via the official Codex app-server) beside Claude at `/codex/*`. */
+  enabled?: boolean
+}
+
 export interface ProxyConfig {
-  /** Defaults to Claude. Antigravity is an opt-in, subscription-account CLI backend. */
-  backend?: "claude" | "antigravity" | "combined"
+  /**
+   * Defaults to Claude. Antigravity and Codex (ChatGPT) are opt-in,
+   * subscription-account CLI backends.
+   */
+  backend?: "claude" | "antigravity" | "combined" | "codex"
   antigravity?: AntigravityOptions
+  /** ChatGPT through the official Codex app-server; standalone or beside Claude. */
+  codex?: CodexBackendOptions
   port: number
   host: string
   debug: boolean
@@ -67,10 +78,19 @@ export interface ProxyConfig {
 /** Read backend selection at instance creation, rather than module import. */
 export function resolveBackendConfig(config: Partial<ProxyConfig>): ProxyConfig {
   const backend = config.backend ?? process.env.MERIDIAN_BACKEND ?? "claude"
-  if (backend !== "claude" && backend !== "antigravity" && backend !== "combined") throw new Error("MERIDIAN_BACKEND must be claude, antigravity or combined")
+  if (backend !== "claude" && backend !== "antigravity" && backend !== "combined" && backend !== "codex") throw new Error("MERIDIAN_BACKEND must be claude, antigravity, combined or codex")
+  const codexEnabled = backend === "codex" || config.codex?.enabled === true || (config.codex?.enabled === undefined && process.env.MERIDIAN_CODEX === "1")
   return {
     ...DEFAULT_PROXY_CONFIG, ...config, backend,
-    ...(backend !== "claude" ? { antigravity: {
+    ...(codexEnabled && backend !== "antigravity" ? { codex: {
+      executable: process.env.MERIDIAN_CODEX_PATH || undefined,
+      defaultModel: process.env.MERIDIAN_CODEX_MODEL || undefined,
+      pendingToolTimeoutMs: process.env.MERIDIAN_CODEX_TOOL_TIMEOUT_MS === undefined ? undefined : Number(process.env.MERIDIAN_CODEX_TOOL_TIMEOUT_MS),
+      maxConversations: process.env.MERIDIAN_CODEX_MAX_CONVERSATIONS === undefined ? undefined : Number(process.env.MERIDIAN_CODEX_MAX_CONVERSATIONS),
+      ...config.codex,
+      enabled: true,
+    } } : {}),
+    ...(backend === "antigravity" || backend === "combined" ? { antigravity: {
       executable: process.env.MERIDIAN_AGY_PATH,
       statePath: process.env.MERIDIAN_AGY_STATE_PATH || undefined,
       pluginPaths: process.env.MERIDIAN_AGY_PLUGIN_PATHS ? parseAgPluginPaths(process.env.MERIDIAN_AGY_PLUGIN_PATHS) : undefined,

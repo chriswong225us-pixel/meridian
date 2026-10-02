@@ -24,6 +24,8 @@ import { resolveSdkWorkingDirectory } from "./cwd"
 import type { Context } from "hono"
 import { DEFAULT_PROXY_CONFIG, resolveBackendConfig } from "./types"
 import { createAntigravityServer } from "./backends/antigravity"
+import { createCodexServer } from "./backends/codex"
+import { isCodexModel } from "./backends/codexProtocol"
 import { env, envBool, envInt } from "../env"
 import { installErrorReporter } from "../errorReporting"
 import type { ProxyConfig, ProxyInstance, ProxyServer } from "./types"
@@ -656,9 +658,12 @@ function beginUpdateCheck(config: { silent?: boolean; version?: string }): Promi
 
 export function createProxyServer(config: Partial<ProxyConfig> = {}): ProxyServer {
   if (resolveBackendConfig(config).backend === "antigravity") return createAntigravityServer(resolveBackendConfig(config))
+  if (resolveBackendConfig(config).backend === "codex") return createCodexServer(resolveBackendConfig(config))
   const finalConfig = resolveBackendConfig(config)
   const claudeProviderFacts = new ClaudeProviderFacts()
   const antigravity = finalConfig.backend === "combined" ? createAntigravityServer({ ...finalConfig, profiles: undefined, defaultProfile: undefined }) : undefined
+  // ChatGPT beside Claude: `/codex/*`, plus OpenAI model names on the Claude routes.
+  const codex = finalConfig.codex?.enabled ? createCodexServer({ ...finalConfig, profiles: undefined, defaultProfile: undefined }) : undefined
   proxyLogSilent = finalConfig.silent
   const serverVersion = finalConfig.version ?? "unknown"
 
@@ -1032,6 +1037,7 @@ export function createProxyServer(config: Partial<ProxyConfig> = {}): ProxyServe
   app.use("/providers", requireAuth)
   app.use("/providers/*", requireAuth)
   app.use("/antigravity/*", requireAuth)
+  app.use("/codex/*", requireAuth)
 
   // Separate provider routes; Claude retains all existing paths and semantics.
   app.all('/antigravity/*', async c => {
@@ -1049,6 +1055,21 @@ export function createProxyServer(config: Partial<ProxyConfig> = {}): ProxyServe
       throw error
     }
   })
+  async function forwardToCodex(request: Request, path: string): Promise<Response> {
+    if (!codex) return Response.json({ type: 'error', error: { type: 'not_found_error', message: 'Codex is not enabled; set MERIDIAN_CODEX=1' } }, { status: 404 })
+    const url = new URL(request.url); url.pathname = path
+    const entry = request.method === 'POST' ? inflight.begin('codex') : undefined
+    try {
+      const response = await codex.app.fetch(new Request(url.toString(), request))
+      if (!entry) return response
+      entry.setStream((response.headers.get('content-type') ?? '').includes('text/event-stream'))
+      return onResponseDone(response, entry.end)
+    } catch (error) {
+      entry?.end()
+      throw error
+    }
+  }
+  app.all('/codex/*', c => forwardToCodex(c.req.raw, new URL(c.req.url).pathname.slice('/codex'.length)))
   app.get('/providers', c => c.html(providerPageHtml))
   for (const route of ['/providers/status', '/providers/view']) app.get(route, async c => {
     const read = async (path: string) => {
@@ -7957,8 +7978,15 @@ export function createProxyServer(config: Partial<ProxyConfig> = {}): ProxyServe
     }
   }
 
-  app.post("/v1/messages", (c) => handleWithQueue(c, "/v1/messages"))
-  app.post("/messages", (c) => handleWithQueue(c, "/messages"))
+  // OpenAI model names select ChatGPT natively, so a client can switch models
+  // mid-session (for example `/model gpt-5.5` in Claude Code) on one base URL.
+  const codexModelRoute = async (c: Context, path: string): Promise<Response | undefined> => {
+    if (!codex) return undefined
+    const model = await c.req.raw.clone().json().then((body: unknown) => body !== null && typeof body === "object" && "model" in body ? (body as { model?: unknown }).model : undefined, () => undefined)
+    return isCodexModel(model) ? forwardToCodex(c.req.raw, path) : undefined
+  }
+  app.post("/v1/messages", async (c) => (await codexModelRoute(c, "/v1/messages")) ?? handleWithQueue(c, "/v1/messages"))
+  app.post("/messages", async (c) => (await codexModelRoute(c, "/messages")) ?? handleWithQueue(c, "/messages"))
 
   /**
    * Cancel a session's live requests and everything live below it.
@@ -8241,7 +8269,7 @@ export function createProxyServer(config: Partial<ProxyConfig> = {}): ProxyServe
       return c.json({ error: { type: "forbidden", message: "/inflight is answered only to loopback clients" } }, 403)
     }
     c.header("Cache-Control", "no-store")
-    return c.json(inflight.snapshot(antigravity ? ["claude", "antigravity"] : ["claude"]))
+    return c.json(inflight.snapshot(["claude", ...(antigravity ? ["antigravity" as const] : []), ...(codex ? ["codex" as const] : [])]))
   })
 
   // Liveness — would restarting this process help? Answered without touching
@@ -9090,7 +9118,10 @@ export function createProxyServer(config: Partial<ProxyConfig> = {}): ProxyServe
       profileEnvOverrides,
     )
     const extendedContext = subscriptionIncludesExtendedContext(authStatus?.subscriptionType)
-    return c.json({ object: "list", data: buildModelList(extendedContext) })
+    // Codex models are listed beside Claude so model pickers can select them;
+    // an unavailable Codex account never hides the Claude list.
+    const codexModels = codex ? await codex.runtime.models().catch(() => []) : []
+    return c.json({ object: "list", data: [...buildModelList(extendedContext), ...codexModels.map(model => ({ id: model.id, object: "model", created: Math.floor(Date.now() / 1000), owned_by: "openai", display_name: model.displayName }))] })
   })
 
   // --- Subscription Quota ---
@@ -9468,10 +9499,11 @@ export function createProxyServer(config: Partial<ProxyConfig> = {}): ProxyServe
     app,
     config: finalConfig,
     initPlugins: initPluginsAsync,
-    closeBackend: antigravity?.closeBackend,
-    beginDrain: () => { draining = true; antigravity?.beginDrain?.() },
+    closeBackend: antigravity || codex ? async () => { await Promise.all([antigravity?.closeBackend(), codex?.closeBackend()]) } : undefined,
+    beginDrain: () => { draining = true; antigravity?.beginDrain?.(); codex?.beginDrain?.() },
     forceAbortInFlight: () => {
       antigravity?.forceAbortInFlight?.()
+      codex?.forceAbortInFlight?.()
       durableWritesRevoked = true
       // Label every request's cause registry BEFORE aborting: shutdown is
       // the producer, and the diagnostic must not read unknown_abort.
@@ -9480,7 +9512,7 @@ export function createProxyServer(config: Partial<ProxyConfig> = {}): ProxyServe
         controller.abort(new Error("Proxy shutdown grace period elapsed"))
       }
     },
-    getInFlightCount: () => inFlightRequests + (antigravity?.getInFlightCount?.() ?? 0),
+    getInFlightCount: () => inFlightRequests + (antigravity?.getInFlightCount?.() ?? 0) + (codex?.getInFlightCount?.() ?? 0),
     sweepSessionGc,
   }
 }
@@ -9511,18 +9543,18 @@ export function installProxyProcessErrorHandlers(): void {
 
 export async function startProxyServer(config: Partial<ProxyConfig> = {}): Promise<ProxyInstance> {
   const selectedConfig = resolveBackendConfig(config)
-  if (selectedConfig.backend === "antigravity") {
-    const backend = createAntigravityServer(selectedConfig)
+  if (selectedConfig.backend === "antigravity" || selectedConfig.backend === "codex") {
+    const backend = selectedConfig.backend === "codex" ? createCodexServer(selectedConfig) : createAntigravityServer(selectedConfig)
     await backend.initPlugins?.()
     if (selectedConfig.installProcessErrorHandlers) {
       installErrorReporter({ version: selectedConfig.version })
       installProxyProcessErrorHandlers()
     }
     const server = serve({ fetch: backend.app.fetch, port: selectedConfig.port, hostname: selectedConfig.host, overrideGlobalObjects: false }, info => {
-      if (!selectedConfig.silent) console.log(`Meridian Antigravity backend: http://${selectedConfig.host}:${info.port}`)
+      if (!selectedConfig.silent) console.log(`Meridian ${selectedConfig.backend === "codex" ? "Codex (ChatGPT)" : "Antigravity"} backend: http://${selectedConfig.host}:${info.port}`)
     }) as Server
     const tracker = trackServerConnections(server)
-    server.once("error", () => { void backend.closeBackend().catch(error => console.error("[antigravity] Shutdown failed:", error)) })
+    server.once("error", () => { void backend.closeBackend().catch(error => console.error(`[${selectedConfig.backend}] Shutdown failed:`, error)) })
     server.keepAliveTimeout = selectedConfig.idleTimeoutSeconds * 1000
     let closing: Promise<void> | undefined
     return { server, config: selectedConfig, close() {

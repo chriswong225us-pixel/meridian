@@ -1,0 +1,119 @@
+{
+  "mode": "simulated",
+  "model": "gpt-5.5",
+  "cli": "codex-cli 0.160.0",
+  "platform": "linux",
+  "passed": [
+    "health",
+    "text turn",
+    "exact continuation reuses the thread",
+    "client tool result routed to the blocked turn",
+    "parallel tool batch delivered sequentially",
+    "undo rebuilds the thread from client history",
+    "streaming"
+  ],
+  "modelVisibleTools": [
+    "apply_patch",
+    "lookup"
+  ],
+  "requests": [
+    {
+      "prompt_cache_key": "01a0fa81-b79f-79d1-961c-977c87f43d16",
+      "tools": [
+        "apply_patch",
+        "lookup"
+      ],
+      "input": [
+        "message:developer",
+        "message:user"
+      ]
+    },
+    {
+      "prompt_cache_key": "01a0fa81-b79f-79d1-961c-977c87f43d16",
+      "tools": [
+        "apply_patch",
+        "lookup"
+      ],
+      "input": [
+        "message:developer",
+        "message:user",
+        "message:assistant",
+        "message:user"
+      ]
+    },
+    {
+      "prompt_cache_key": "01a0fa81-b7e0-7f61-9159-756594d2db01",
+      "tools": [
+        "apply_patch",
+        "lookup"
+      ],
+      "input": [
+        "message:developer",
+        "message:user"
+      ]
+    },
+    {
+      "prompt_cache_key": "01a0fa81-b7e0-7f61-9159-756594d2db01",
+      "tools": [
+        "apply_patch",
+        "lookup"
+      ],
+      "input": [
+        "message:developer",
+        "message:user",
+        "function_call",
+        "function_call_output"
+      ]
+    },
+    {
+      "prompt_cache_key": "01a0fa81-b82a-75c1-b4d1-3f362176dadd",
+      "tools": [
+        "apply_patch",
+        "lookup"
+      ],
+      "input": [
+        "message:developer",
+        "message:user"
+      ]
+    },
+    {
+      "prompt_cache_key": "01a0fa81-b82a-75c1-b4d1-3f362176dadd",
+      "tools": [
+        "apply_patch",
+        "lookup"
+      ],
+      "input": [
+        "message:developer",
+        "message:user",
+        "function_call",
+        "function_call",
+        "function_call_output",
+        "function_call_output"
+      ]
+    },
+    {
+      "prompt_cache_key": "01a0fa81-b86a-74e2-add9-5ba41e79f98c",
+      "tools": [
+        "apply_patch",
+        "lookup"
+      ],
+      "input": [
+        "message:developer",
+        "message:user",
+        "message:assistant",
+        "message:user"
+      ]
+    },
+    {
+      "prompt_cache_key": "01a0fa81-b890-72b2-8871-46108773c69e",
+      "tools": [
+        "apply_patch",
+        "lookup"
+      ],
+      "input": [
+        "message:developer",
+        "message:user"
+      ]
+    }
+  ]
+}

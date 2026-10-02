@@ -22,6 +22,8 @@ External plugins depend on these interfaces. **Changes require project owner app
 | `GET /profiles/list` response shape | `server.ts` | Profile management UI and CLI |
 | `GET /inflight` response shape and loopback-only access | `server.ts`, `inflight.ts` | Loopback supervisors observing `scope: client-http`; not a restart/admission barrier (#1216) |
 | `POST /profiles/active` request/response | `server.ts` | Profile switching from CLI and UI |
+| `/codex/*`, `x-meridian-codex-continuation` header, `ProxyConfig.codex` | `server.ts` / `backends/codex.ts` | ChatGPT through the official Codex app-server (preview) |
+
 If you need to modify any of these, open an issue first — breaking changes affect downstream plugin authors.
 
 Antigravity additionally accepts `statePath`, `plugins` and `pluginPaths` under its
@@ -62,3 +64,14 @@ unresolved guard. This is not active-process restoration or client-tool executio
 journaling. Failed official read-only probes impose a five-second readiness
 cooldown with HTTP 503 and Retry-After. Both changes are within #1073's recovery
 and failure-handling scope.
+
+The Codex (ChatGPT) backend adds `backend: "codex"`, `ProxyConfig.codex`
+(`enabled`, `executable`, `defaultModel`, `extraConfig`, `maxConversations`,
+`pendingToolTimeoutMs`, `idleTimeoutMs`) and the `codex` upstream in
+`GET /inflight`. These are additive: with Codex disabled (the default), Claude
+routes, `/v1/models`, `/inflight` and `/health` are unchanged. With Codex enabled,
+`POST /v1/messages` and `/messages` requests naming an OpenAI model (`gpt-*`,
+`o<N>`, `codex-*`, `codex/<model>`) are served by Codex, and `/v1/models`
+appends the account's Codex models. Standalone `/health` reports
+`backend: "codex"`. Owner authorization: explicit owner request to add ChatGPT
+as a native provider beside Claude.

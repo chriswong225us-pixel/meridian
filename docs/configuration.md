@@ -5,6 +5,10 @@ official agy CLI backend; its permissions, models and environment variables are
 documented in the [Antigravity guide](antigravity.md). Claude SDK settings below
 do not automatically apply to Antigravity.
 
+ChatGPT is available beside Claude with `MERIDIAN_CODEX=1`, or alone with
+`MERIDIAN_BACKEND=codex`, through the official Codex app-server; see the
+[Codex guide](codex.md).
+
 [← Back to README](../README.md)
 
 Environment variables, endpoints, authentication, SDK feature toggles, passthrough mode, and CLI commands.
@@ -530,6 +534,9 @@ HTTP requests before requesting a graceful shutdown:
   after their `POST` returned and processes waiting for a client tool result
   are not counted. The standalone
   `MERIDIAN_BACKEND=antigravity` server does not serve `/inflight`.
+- `codex` appears only with `MERIDIAN_CODEX=1` and counts ChatGPT `POST`s
+  (`/codex/*` and OpenAI model names on `/v1/messages`). The standalone
+  `MERIDIAN_BACKEND=codex` server does not serve `/inflight`.
 - Meridian's own background work (token refresh, usage polling, session
   cleanup) is never counted.
 - Only a loopback peer (`127.0.0.0/8`, `::1`) gets an answer, and not through a

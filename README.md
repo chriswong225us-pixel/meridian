@@ -31,6 +31,10 @@ availability and subscription limits still apply.
 | [Client compatibility and setup](docs/agents.md) | [Pi and OpenCode setup](docs/antigravity.md) |
 | Headless macOS, Linux and Windows | Authenticated acceptance on macOS arm64; Linux/Windows verification unfinished |
 
+**ChatGPT (preview):** run `MERIDIAN_CODEX=1 meridian` to serve ChatGPT models
+from your ChatGPT plan beside Claude through OpenAI's official Codex app-server.
+Clients keep their own tools, undo and sessions. See the [Codex guide](docs/codex.md).
+
 ## Quick start
 
 For the released **Claude** backend, install [Node.js 22+](https://nodejs.org/), then:

@@ -145,6 +145,26 @@ ownership is unchanged.
 See [the backend guide](docs/antigravity.md) for the explicit permission opt-in,
 capability errors and recovery limits. Contract work is tracked in #1073.
 
+### Codex (ChatGPT) runtime
+
+`backend: "codex"` (or `MERIDIAN_BACKEND=codex`) serves ChatGPT alone;
+`codex.enabled` (or `MERIDIAN_CODEX=1`) serves it beside Claude at `/codex/*`
+and for OpenAI model names on the Claude Messages routes. Requests run through
+one long-lived official `codex app-server` process over stdio JSON-RPC
+(`backends/codexAppServer.ts`); Meridian never handles ChatGPT credentials.
+`backends/codexProtocol.ts` is pure: request validation, lineage message keys,
+thread contracts (system + client tool catalog) and conversion of client
+history into Responses items. `backends/codexRuntime.ts` owns live threads:
+an exact continuation starts the next turn on the same thread (same prompt-cache
+key); a client tool result answers the pending `item/tool/call` by call ID;
+anything else starts a fresh ephemeral thread seeded with `thread/inject_items`
+from the client's history. Client history is therefore the only lineage source,
+and live maps are a cache that may be discarded at any time (timeouts, eviction,
+app-server exit). Codex built-in tools are disabled through `-c` overrides so
+client tools are the only actions; built-in approval requests are declined.
+`backends/codex.ts` adapts Anthropic JSON/SSE. Backend modules do not import
+Claude session or cache modules. See [the Codex guide](docs/codex.md).
+
 ### Default Claude runtime
 
 ```
